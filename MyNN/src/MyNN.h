@@ -61,12 +61,23 @@ namespace MyNN {
         void Randomize(float min = 0.0f, float max = 1.0f);
 
         const Matrix& GetOutputData() const { return m_ActivationField; }
-        void Calculate(const Matrix& in, const std::function<float(float)>& activationFunc);
+        void Forward(const Matrix& in, const std::function<float(float)>& activationFunc);
 
     private:
         Matrix m_ActivationField;
         Matrix m_Biases;
         Matrix m_WeightedConnections;
+    };
+
+    class NeuralNetwork
+    {
+    public:
+        NeuralNetwork(size_t inputFieldCount, const std::vector<size_t>& neuronsInLayers);
+
+        void PropagateForward(const Matrix& in, const std::function<float(float)>& activationFunc);
+
+    private:
+        std::vector<NNLayer> m_Layers;
     };
 
 } // MyNN

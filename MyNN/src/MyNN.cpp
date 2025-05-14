@@ -95,10 +95,34 @@ namespace MyNN {
         randomize(m_Biases, min, max);
     }
 
-    void NNLayer::Calculate(const Matrix& in, const std::function<float(float)>& activationFunc)
+    void NNLayer::Forward(const Matrix& in, const std::function<float(float)>& activationFunc)
     {
         dot(m_ActivationField, in, m_WeightedConnections);
         m_ActivationField += m_Biases;
+        for (auto& x : m_ActivationField.Data)
+        {
+            x = activationFunc(x);
+        }
+    }
+
+    NeuralNetwork::NeuralNetwork(size_t inputFieldCount, const std::vector<size_t>& neuronsInLayers)
+    {
+        // "входной слой"
+        m_Layers.emplace_back(inputFieldCount, neuronsInLayers.front());
+
+        for (size_t i = 1; i < neuronsInLayers.size(); ++i)
+        {
+            m_Layers.emplace_back(neuronsInLayers.at(i - 1), neuronsInLayers.at(i));
+        }
+    }
+
+    void NeuralNetwork::PropagateForward(const Matrix& in, const std::function<float(float)>& activationFunc)
+    {
+        m_Layers.front().Forward(in, activationFunc);
+        for (size_t i = 1; i < m_Layers.size(); ++i)
+        {
+            m_Layers[i].Forward(m_Layers.at(i - 1).GetOutputData(), activationFunc);
+        }
     }
 
 } // MyNN
