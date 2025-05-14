@@ -95,7 +95,7 @@ namespace MyNN {
         randomize(m_Biases, min, max);
     }
 
-    void NNLayer::Forward(const Matrix& in, const std::function<float(float)>& activationFunc)
+    void NNLayer::Forward(const std::vector<float>& in, const std::function<float(float)>& activationFunc)
     {
         dot(m_ActivationField, in, m_WeightedConnections);
         m_ActivationField += m_Biases;
@@ -105,7 +105,9 @@ namespace MyNN {
         }
     }
 
-    NeuralNetwork::NeuralNetwork(size_t inputFieldCount, const std::vector<size_t>& neuronsInLayers)
+    NeuralNetwork::NeuralNetwork(size_t inputFieldCount, const std::vector<size_t>& neuronsInLayers,
+        std::function<float(float)>&& activationFunc)
+        : ActivationFunc(std::forward<std::function<float(float)>>(activationFunc))
     {
         // "входной слой"
         m_Layers.emplace_back(inputFieldCount, neuronsInLayers.front());
@@ -116,13 +118,36 @@ namespace MyNN {
         }
     }
 
-    void NeuralNetwork::PropagateForward(const Matrix& in, const std::function<float(float)>& activationFunc)
+    void NeuralNetwork::PropagateForward(const std::vector<float>& in)
     {
-        m_Layers.front().Forward(in, activationFunc);
+        m_Layers.front().Forward(in, ActivationFunc);
         for (size_t i = 1; i < m_Layers.size(); ++i)
         {
-            m_Layers[i].Forward(m_Layers.at(i - 1).GetOutputData(), activationFunc);
+            m_Layers[i].Forward(m_Layers.at(i - 1).GetOutputData(), ActivationFunc);
         }
+    }
+
+    float NeuralNetwork::CalculateCost(const Matrix& trainData, const std::vector<float>& desired)
+    {
+        const auto& nnOutput = m_Layers.back().GetOutputData().Data;
+        assert(nnOutput.size() == desired.size());
+
+        float cost = 0.0f;
+        for (const auto& in : trainData)
+        {
+            PropagateForward(in);
+            for (size_t i = 0; i < nnOutput.size(); ++i)
+            {
+                float dist = nnOutput.at(i) - desired.at(i);
+                cost += dist * dist;
+            }
+        }
+        return cost / trainData.Rows;
+    }
+
+    void NeuralNetwork::ForwardDifference(const Matrix& in, const std::vector<float>& desired)
+    {
+
     }
 
 } // MyNN
