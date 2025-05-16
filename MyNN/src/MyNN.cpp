@@ -8,43 +8,32 @@
 
 namespace MyNN {
 
-    void Matrix::Sum(const Matrix& other)
+    void Matrix::Sum(Matrix& other)
     {
         assert(other.Rows == Rows);
         assert(other.Cols == Cols);
 
-        auto thisVal = Data.begin();
-        auto otherVal = other.Data.begin();
-        while (thisVal != Data.end() || otherVal != other.Data.end())
+        for (size_t i = 0; i < Data.size(); ++i)
         {
-            *thisVal += *otherVal;
-            ++thisVal;
-            ++otherVal;
+            Data[i] = other.Data[i];
         }
     }
 
-    void fill(Matrix& mat, float val)
+    void fill(Matrix& mat, double val)
     {
         std::ranges::fill(mat.Data.begin(), mat.Data.end(), val);
     }
 
-    void randomize(Matrix& mat, float min, float max)
+    void randomize(Matrix& mat, double min, double max)
     {
         std::ranges::for_each(mat.Data.begin(), mat.Data.end(),
-            [min, max](float& val)
+            [min, max](double& val)
             {
-                val = (float)std::rand() / (float)RAND_MAX * (max - min) + min;
+                val = (double)std::rand() / (double)RAND_MAX * (max - min) + min;
             });
     }
 
-    Matrix sum(const Matrix& lhs, const Matrix& rhs)
-    {
-        Matrix result(lhs);
-        result.Sum(rhs);
-        return result;
-    }
-
-    void dot(Matrix& dst, const Matrix& lhs, const Matrix& rhs)
+    void dot(Matrix& dst, Matrix& lhs, Matrix& rhs)
     {
         assert(lhs.Cols == rhs.Rows);
         assert(dst.Rows == lhs.Rows);
@@ -62,92 +51,162 @@ namespace MyNN {
         }
     }
 
-    /*Matrix dot(const Matrix& lhs, const Matrix& rhs)
+    void dot_v_m(Matrix& dst, const single_row& lhs, Matrix& rhs)
     {
-        assert(lhs.Cols == rhs.Rows);
+        assert(lhs.size() == rhs.Rows);
+        assert(dst.Rows == 1);
+        assert(dst.Cols == rhs.Cols);
 
-        Matrix result(lhs.Rows, rhs.Cols);
-        dot(result, lhs, rhs);
-        return result;
-    }*/
+        for (size_t j = 0; j < rhs.Cols; ++j)
+        {
+            for (size_t k = 0; k < lhs.size(); ++k)
+            {
+                dst.At(0, j) += lhs[k] * rhs.At(k, j);
+            }
+        }
+    }
 
-    void print(const Matrix& mat, std::string_view name)
+    void print(Matrix& mat, std::string_view name)
     {
         std::cout << name << " = [\n    ";
-        for (size_t row = 0; row < mat.Rows; ++row)
+        size_t rowIndex = 0;
+        for (const auto& row : mat)
         {
-            for (auto val : mat.GetRow(row))
+            for (auto val : row)
             {
                 std::cout << std::format("{:<6.3f} ", val);
             }
-            if (row != mat.Rows - 1)
+            if (rowIndex != mat.Rows - 1)
                 std::cout << "\n    ";
             else
                 std::cout << '\n';
+            ++rowIndex;
         }
         std::cout << "]\n";
     }
 
     /*=======================================================================*/
 
-    void NNLayer::Randomize(float min, float max)
+    void NNLayer::Randomize(double min, double max)
     {
-        randomize(m_Biases, min, max);
+        randomize(Biases, min, max);
+        randomize(WeightedConnections, min, max);
     }
 
-    void NNLayer::Forward(const std::vector<float>& in, const std::function<float(float)>& activationFunc)
+    void NNLayer::Forward(const single_row& in, const std::function<double(double)>& activationFunc)
     {
-        dot(m_ActivationField, in, m_WeightedConnections);
-        m_ActivationField += m_Biases;
-        for (auto& x : m_ActivationField.Data)
+        dot_v_m(ActivationField, in, WeightedConnections);
+        ActivationField += Biases;
+        for (auto& x : ActivationField.Data)
         {
             x = activationFunc(x);
         }
     }
 
-    NeuralNetwork::NeuralNetwork(size_t inputFieldCount, const std::vector<size_t>& neuronsInLayers,
-        std::function<float(float)>&& activationFunc)
-        : ActivationFunc(std::forward<std::function<float(float)>>(activationFunc))
+    NeuralNetwork::NeuralNetwork(const std::vector<size_t>& neuronsInLayers,
+        std::function<double(double)>&& activationFunc)
+        : ActivationFunc(std::forward<std::function<double(double)>>(activationFunc))
     {
+        assert(neuronsInLayers.size() >= 2);
         // "входной слой"
-        m_Layers.emplace_back(inputFieldCount, neuronsInLayers.front());
+        m_Layers.emplace_back(neuronsInLayers.at(0), neuronsInLayers.at(0));
 
         for (size_t i = 1; i < neuronsInLayers.size(); ++i)
         {
-            m_Layers.emplace_back(neuronsInLayers.at(i - 1), neuronsInLayers.at(i));
+            m_Layers.emplace_back(neuronsInLayers.at(i), neuronsInLayers.at(i - 1));
         }
     }
 
-    void NeuralNetwork::PropagateForward(const std::vector<float>& in)
+    void NeuralNetwork::PropagateForward(const single_row& in)
     {
         m_Layers.front().Forward(in, ActivationFunc);
         for (size_t i = 1; i < m_Layers.size(); ++i)
         {
-            m_Layers[i].Forward(m_Layers.at(i - 1).GetOutputData(), ActivationFunc);
+            m_Layers[i].Forward(m_Layers.at(i - 1).GetOutputData().GetRow(0), ActivationFunc);
         }
     }
 
-    float NeuralNetwork::CalculateCost(const Matrix& trainData, const std::vector<float>& desired)
+    double NeuralNetwork::CalculateCost(Matrix& trainData, data_vector& desired)
     {
-        const auto& nnOutput = m_Layers.back().GetOutputData().Data;
-        assert(nnOutput.size() == desired.size());
+        assert(trainData.Rows == desired.size());
 
-        float cost = 0.0f;
+        const auto& nnOutput = m_Layers.back().GetOutputData().Data;
+        double cost = 0.0f;
+        size_t row = 0;
         for (const auto& in : trainData)
         {
             PropagateForward(in);
-            for (size_t i = 0; i < nnOutput.size(); ++i)
-            {
-                float dist = nnOutput.at(i) - desired.at(i);
-                cost += dist * dist;
-            }
+            double dist = nnOutput.at(0) - desired.at(row);
+            cost += dist * dist;
+            ++row;
         }
         return cost / trainData.Rows;
     }
 
-    void NeuralNetwork::ForwardDifference(const Matrix& in, const std::vector<float>& desired)
+    void NeuralNetwork::ForwardDifference(Matrix& trainData, data_vector& desired, NeuralNetwork& grad)
     {
+        assert(trainData.Rows == desired.size());
 
+        double cost = CalculateCost(trainData, desired);
+
+        for (size_t layer = 0; layer < m_Layers.size(); ++layer)
+        {
+            for (size_t i = 0; i < m_Layers[layer].WeightedConnections.Rows; ++i)
+            {
+                for (size_t j = 0; j < m_Layers[layer].WeightedConnections.Cols; ++j)
+                {
+                    double& weight = m_Layers[layer].WeightedConnections.At(i, j);
+                    double savedWeight = weight;
+                    weight += Epsilon;
+                    grad.m_Layers[layer].WeightedConnections.At(i, j) = (CalculateCost(trainData, desired) - cost) / Epsilon;
+                    weight = savedWeight;
+                }
+            }
+            for (size_t j = 0; j < m_Layers[layer].Biases.Cols; ++j)
+            {
+                double& bias = m_Layers[layer].Biases.At(0, j);
+                double savedBias = bias;
+                bias += Epsilon;
+                grad.m_Layers[layer].Biases.At(0, j) = (CalculateCost(trainData, desired) - cost) / Epsilon;
+                bias = savedBias;
+            }
+        }
+
+        for (size_t layer = 0; layer < m_Layers.size(); ++layer)
+        {
+            for (size_t i = 0; i < m_Layers[layer].WeightedConnections.Rows; ++i)
+            {
+                for (size_t j = 0; j < m_Layers[layer].WeightedConnections.Cols; ++j)
+                {
+                    m_Layers[layer].WeightedConnections.At(i, j) -= grad.m_Layers[layer].WeightedConnections.At(i, j) * LearnRate;
+                }
+            }
+            for (size_t j = 0; j < m_Layers[layer].Biases.Cols; ++j)
+            {
+                m_Layers[layer].Biases.At(0, j) -= grad.m_Layers[layer].Biases.At(0, j) * LearnRate;
+            }
+        }
+    }
+
+    void NeuralNetwork::Randomize(double min, double max)
+    {
+        for (auto& layer : m_Layers)
+            layer.Randomize(min, max);
+    }
+
+    void NeuralNetwork::PrintInfo() const
+    {
+        std::cout << "Layers count: " << m_Layers.size() << '\n';
+        size_t i = 0;
+        for (const auto& layer : m_Layers)
+        {
+            std::cout << std::format("layer #{}:\n  weights : {}x{}\n  biases : {}x{}\n  int: {}x{}\n",
+                i, layer.WeightedConnections.Rows, layer.WeightedConnections.Cols,
+                layer.Biases.Rows, layer.Biases.Cols,
+                layer.ActivationField.Rows, layer.ActivationField.Cols);
+            ++i;
+        }
+        std::cout << std::endl;
     }
 
 } // MyNN

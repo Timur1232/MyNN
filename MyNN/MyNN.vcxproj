@@ -139,6 +139,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="src\Matrix.h" />
     <ClInclude Include="src\MyNN.h" />
   </ItemGroup>
   <ItemGroup>

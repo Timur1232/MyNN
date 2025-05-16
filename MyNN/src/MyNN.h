@@ -7,9 +7,8 @@
 
 namespace MyNN {
 
-    using data_vector = std::vector<float>;
-    using single_row = std::span<float>;
-    using const_single_row = std::span<const float>;
+    using data_vector = std::vector<double>;
+    using single_row = std::span<double>;
 
     struct Matrix
     {
@@ -56,101 +55,66 @@ namespace MyNN {
             size_t m_CurrentRow = 0;
         };
 
-        class const_RowIterator
-        {
-        public:
-            const_RowIterator(const Matrix& mat, bool end = false)
-                : m_Matrix(mat)
-            {
-                if (end)
-                {
-                    m_CurrentRow = mat.Rows;
-                }
-            }
-
-            const_RowIterator operator++()
-            {
-                ++m_CurrentRow;
-                return *this;
-            }
-            bool operator!=(const const_RowIterator& other)
-            {
-                return m_CurrentRow != other.m_CurrentRow;
-            }
-            const_single_row operator*()
-            {
-                return m_Matrix.GetRow(m_CurrentRow);
-            }
-
-        private:
-            const Matrix& m_Matrix;
-            size_t m_CurrentRow = 0;
-        };
-
-        float& At(size_t row, size_t col) { return Data[row * Rows + col]; }
-        const float& At(size_t row, size_t col) const { return Data[row * Rows + col]; }
-
+        double& At(size_t row, size_t col) { return Data[row * Cols + col]; }
         single_row GetRow(size_t row) { return std::span(Data).subspan(row * Cols, Cols); }
-        const_single_row GetRow(size_t row) const { return std::span(Data).subspan(row * Cols, Cols); }
 
         // Суммирует две матрицы; результат записывает в матрицу, которая вызывает метод
-        void Sum(const Matrix& other);
-        const Matrix& operator+=(const Matrix& other) { Sum(other); return *this; }
+        void Sum(Matrix& other);
+        const Matrix& operator+=(Matrix& other) { Sum(other); return *this; }
 
         RowIterator begin() { return RowIterator(*this); }
         RowIterator end() { return RowIterator(*this, true); }
-
-        const_RowIterator begin() const { return const_RowIterator(*this); }
-        const_RowIterator end() const { return const_RowIterator(*this, true); }
     };
 
-    void fill(Matrix& mat, float val);
-    void randomize(Matrix& mat, float min = 0.0f, float max = 1.0f);
+    void fill(Matrix& mat, double val);
+    void randomize(Matrix& mat, double min = 0.0f, double max = 1.0f);
 
-    Matrix sum(const Matrix& lhs, const Matrix& rhs);
-    void dot(Matrix& dst, const Matrix& lhs, const Matrix& rhs);
-    //Matrix dot(const Matrix& lhs, const Matrix& rhs);
+    void dot(Matrix& dst, Matrix& lhs, Matrix& rhs);
+    void dot_v_m(Matrix& dst, const single_row& lhs, Matrix& rhs);
 
-    void print(const Matrix& mat, std::string_view name);
+    void print(Matrix& mat, std::string_view name);
     #define PRINT_MATRIX(mat) print(mat, #mat)
 
     /*=======================================================================*/
 
-    class NNLayer
+    struct NNLayer
     {
-    public:
+        Matrix ActivationField;
+        Matrix Biases;
+        Matrix WeightedConnections;
+
         NNLayer(size_t neuronCount, size_t inputsCount)
-            : m_ActivationField(1, neuronCount),
-              m_Biases(1, neuronCount),
-              m_WeightedConnections(inputsCount, neuronCount)
+            : ActivationField(1, neuronCount),
+              Biases(1, neuronCount),
+              WeightedConnections(inputsCount, neuronCount)
         {
         }
 
-        void Randomize(float min = 0.0f, float max = 1.0f);
+        void Randomize(double min = 0.0f, double max = 1.0f);
 
-        const Matrix& GetOutputData() const { return m_ActivationField; }
-        void Forward(const std::vector<float>& in, const std::function<float(float)>& activationFunc);
-
-    private:
-        Matrix m_ActivationField;
-        Matrix m_Biases;
-        Matrix m_WeightedConnections;
+        Matrix& GetOutputData() { return ActivationField; }
+        void Forward(const single_row& in, const std::function<double(double)>& activationFunc);
     };
 
     class NeuralNetwork
     {
     public:
-        std::function<float(float)> ActivationFunc;
-        float Epsilon = 1e-1f;
-        float LearnRate = 1e-1f;
+        std::function<double(double)> ActivationFunc;
+        double Epsilon = 2e-1f;
+        double LearnRate = 2e-1f;
 
     public:
-        NeuralNetwork(size_t inputFieldCount, const std::vector<size_t>& neuronsInLayers,
-            std::function<float(float)>&& activationFunc);
+        NeuralNetwork(const std::vector<size_t>& neuronsInLayers,
+            std::function<double(double)>&& activationFunc);
 
-        void PropagateForward(const std::vector<float>& in);
-        float CalculateCost(const Matrix& trainData, const std::vector<float>& desired);
-        void ForwardDifference(const Matrix& in, const std::vector<float>& desired);
+        void PropagateForward(const single_row& in);
+        double CalculateCost(Matrix& trainData, data_vector& desired);
+        void ForwardDifference(Matrix& trainData, data_vector& desired, NeuralNetwork& grad);
+
+        Matrix& GetOutput() { return m_Layers.back().GetOutputData(); }
+
+        void Randomize(double min = 0.0f, double max = 1.0f);
+        void PrintInfo() const;
 
     private:
         std::vector<NNLayer> m_Layers;
